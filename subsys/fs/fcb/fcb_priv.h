@@ -15,13 +15,13 @@ extern "C" {
 #define FCB_CRC_SZ	sizeof(u8_t)
 #define FCB_TMP_BUF_SZ	32
 
-#define FCB_ID_GT(a, b) (((int16_t)(a) - (int16_t)(b)) > 0)
+#define FCB_ID_GT(a, b) (((int32_t)(a) - (int32_t)(b)) > 0)
 
 struct fcb_disk_area {
 	u32_t fd_magic;
 	u8_t fd_ver;
-	u8_t _pad;
-	u16_t fd_id;
+	u8_t _pad[3];
+	u32_t fd_id;
 };
 
 int fcb_put_len(u8_t *buf, u16_t len);
@@ -47,7 +47,7 @@ int fcb_getnext_nolock(struct fcb *fcb, struct fcb_entry *loc);
 int fcb_elem_info(struct fcb *fcb, struct fcb_entry *loc);
 int fcb_elem_crc8(struct fcb *fcb, struct fcb_entry *loc, u8_t *crc8p);
 
-int fcb_sector_hdr_init(struct fcb *fcb, struct flash_sector *sector, u16_t id);
+int fcb_sector_hdr_init(struct fcb *fcb, struct flash_sector *sector, u32_t id);
 int fcb_sector_hdr_read(struct fcb *fcb, struct flash_sector *sector,
 			struct fcb_disk_area *fdap);
 

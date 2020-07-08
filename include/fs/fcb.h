@@ -92,7 +92,7 @@ struct fcb {
 	 */
 
 	u8_t f_version; /**<  Current version number of the data */
-	u8_t f_sector_cnt; /**< Number of elements in sector array */
+	u16_t f_sector_cnt; /**< Number of elements in sector array */
 	u8_t f_scratch_cnt;
 	/**< Number of sectors to keep empty. This can be used if you need
 	 * to have scratch space for garbage collecting when FCB fills up.
@@ -111,7 +111,7 @@ struct fcb {
 	 */
 
 	struct fcb_entry f_active; /**< internal state */
-	u16_t f_active_id;
+	u32_t f_active_id;
 	/**< Flash location where the newest data is, internal state */
 
 	u8_t f_align;
