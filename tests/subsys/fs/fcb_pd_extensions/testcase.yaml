@@ -1,0 +1,4 @@
+tests:
+  filesystem.fcb:
+    platform_whitelist: nrf52840dk_nrf52840
+    tags: flash_circural_buffer
