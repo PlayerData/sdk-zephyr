@@ -96,7 +96,7 @@ fcb_init(int f_area_id, struct fcb *fcb)
 	int rc;
 	int i;
 	u8_t align;
-	int oldest = -1, newest = -1;
+	int64_t oldest = -1, newest = -1;
 	struct flash_sector *oldest_sector = NULL, *newest_sector = NULL;
 	struct fcb_disk_area fda;
 
@@ -232,14 +232,14 @@ fcb_get_len(u8_t *buf, u16_t *len)
  * Initialize erased sector for use.
  */
 int
-fcb_sector_hdr_init(struct fcb *fcb, struct flash_sector *sector, u16_t id)
+fcb_sector_hdr_init(struct fcb *fcb, struct flash_sector *sector, u32_t id)
 {
 	struct fcb_disk_area fda;
 	int rc;
 
 	fda.fd_magic = fcb->f_magic;
 	fda.fd_ver = fcb->f_version;
-	fda._pad = 0xff;
+	memset(fda._pad, 0xff, sizeof(fda._pad));
 	fda.fd_id = id;
 
 	rc = fcb_flash_write(fcb, sector, 0, &fda, sizeof(fda));
