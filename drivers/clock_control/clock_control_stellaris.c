@@ -5,22 +5,21 @@
  */
 
 #include <soc.h>
-#include <clock_control.h>
-#include <misc/util.h>
-#include <sys_io.h>
-#include <clock_control/stellaris_clock_control.h>
+#include <drivers/clock_control.h>
+#include <sys/util.h>
+#include <drivers/clock_control/stellaris_clock_control.h>
 
 enum clock_control_regs {
 	RCGC_OFFSET = 0x100,
 };
 
-#define CCM_REG_ADDR(offset)	(DT_CLOCK_CONTROL_BASE_ADDR + offset)
+#define DT_DRV_COMPAT ti_stellaris_ccm
 
 static u32_t get_bus_addr(u32_t bus)
 {
 	u32_t addr;
 
-	addr = CCM_REG_ADDR(RCGC_OFFSET) + (bus * 4);
+	addr = DT_INST_REG_ADDR(0) + RCGC_OFFSET + (bus * 4);
 	return addr;
 }
 
@@ -64,7 +63,7 @@ static struct clock_control_driver_api stellaris_clock_control_api = {
 	.get_rate = stellaris_clock_control_get_subsys_rate,
 };
 
-DEVICE_AND_API_INIT(clock_stellaris, DT_CLOCK_CONTROL_LABEL,
+DEVICE_AND_API_INIT(clock_stellaris, DT_INST_LABEL(0),
 		    &stellaris_clock_control_init,
 		    NULL, NULL,
 		    PRE_KERNEL_1,
