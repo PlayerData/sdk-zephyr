@@ -13,7 +13,6 @@ include: [clock-controller.yaml, base.yaml]
 
 properties:
     reg:
-      type: array
       description: mmio register space
       required: true
 
