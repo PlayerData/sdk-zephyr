@@ -1,35 +1,27 @@
 #
 # Copyright (c) 2018, Zilogic Systems.
+# Copyright (c) 2020, PlayerData Holdings Ltd
 #
 # SPDX-License-Identifier: Apache-2.0
 #
----
-title: STELLARIS CCM
-version: 0.1
 
-description: >
-    This binding gives a base representation of the Stellaris Clock control
+description: STELLARIS CCM
+
+compatible: "ti,stellaris-ccm"
+
+include: [clock-controller.yaml, base.yaml]
 
 properties:
-    compatible:
-      type: string
-      category: required
-      description: compatible strings
-      constraint: "ti,stellaris-ccm"
-
     reg:
       type: array
       description: mmio register space
-      generation: define
-      category: required
+      required: true
 
     label:
       type: string
-      category: required
+      required: true
       description: Human readable string describing the device (used by Zephyr for API name)
-      generation: define
 
-"#cells":
+clock-cells:
   - bus
   - enable
-...
