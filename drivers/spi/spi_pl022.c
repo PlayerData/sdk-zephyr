@@ -11,20 +11,21 @@ LOG_MODULE_REGISTER(LOG_MODULE_NAME);
 
 #include <errno.h>
 #include <device.h>
-#include <spi.h>
+#include <drivers/spi.h>
 #include <soc.h>
 #include <string.h>
 
 #ifdef CONFIG_CLOCK_CONTROL_STELLARIS
-#include <clock_control/stellaris_clock_control.h>
+#include <drivers/clock_control/stellaris_clock_control.h>
 #endif
 
-#include <clock_control.h>
+#include <drivers/clock_control.h>
 
 #include "spi_pl022.h"
 
-static void sys_set_bits(u32_t address,
-			 u32_t mask, u32_t shift, u32_t data)
+#define DT_DRV_COMPAT arm_pl022
+
+static void sys_set_bits(u32_t address, u32_t mask, u32_t shift, u32_t data)
 {
 	u32_t temp;
 
@@ -63,7 +64,7 @@ static bool spi_transfer_ongoing(struct device *dev)
 
 static void pull_data(struct device *dev)
 {
-	const struct spi_pl022_config *cfg = dev->config->config_info;
+	const struct spi_pl022_config *cfg = dev->config_info;
 	struct spi_pl022_data *data = dev->driver_data;
 	u32_t base = cfg->base;
 	u16_t value;
@@ -82,7 +83,7 @@ static void pull_data(struct device *dev)
 
 static void push_data(struct device *dev)
 {
-	const struct spi_pl022_config *cfg = dev->config->config_info;
+	const struct spi_pl022_config *cfg = dev->config_info;
 	struct spi_pl022_data *data = dev->driver_data;
 	u32_t base = cfg->base;
 	u16_t value;
@@ -108,18 +109,18 @@ static void push_data(struct device *dev)
 
 static void set_frequency(struct device *dev, u32_t freq)
 {
-	const struct spi_pl022_config *cfg = dev->config->config_info;
+	const struct spi_pl022_config *cfg = dev->config_info;
 	u32_t base = cfg->base;
 	u32_t prescale;
 	u32_t clk_rate;
 	u32_t spi_clock;
 
 	/* Get periperal clock frequency */
-	clock_control_get_rate(device_get_binding(DT_CLOCK_CONTROL_LABEL),
-			       (clock_control_subsys_t) &cfg->pclk, &spi_clock);
+	clock_control_get_rate(device_get_binding(DT_INST_CLOCKS_LABEL(0)),
+			       (clock_control_subsys_t)&cfg->pclk, &spi_clock);
 
-	for (prescale = CLK_PRESCALE_MIN;
-	     prescale <= CLK_PRESCALE_MAX; prescale += 2) {
+	for (prescale = CLK_PRESCALE_MIN; prescale <= CLK_PRESCALE_MAX;
+	     prescale += 2) {
 		for (clk_rate = SERIAL_CLKRATE_MIN;
 		     clk_rate <= SERIAL_CLKRATE_MAX; clk_rate++) {
 			if (freq >= (spi_clock / (prescale * clk_rate))) {
@@ -139,7 +140,7 @@ static void set_frequency(struct device *dev, u32_t freq)
 
 static void completed(struct device *dev, u32_t error)
 {
-	const struct spi_pl022_config *cfg = dev->config->config_info;
+	const struct spi_pl022_config *cfg = dev->config_info;
 	struct spi_pl022_data *data = dev->driver_data;
 	u32_t base = cfg->base;
 
@@ -160,14 +161,14 @@ out:
 	spi_context_cs_control(&data->ctx, false);
 
 	LOG_DBG("SPI transaction complete %s error",
-		    error ? "with" : "without");
+		error ? "with" : "without");
 
 	spi_context_complete(&data->ctx, error ? -EIO : 0);
 }
 
 static void spi_pl022_isr(struct device *dev)
 {
-	const struct spi_pl022_config *cfg = dev->config->config_info;
+	const struct spi_pl022_config *cfg = dev->config_info;
 	u32_t base = cfg->base;
 	u32_t error = 0;
 	u32_t status;
@@ -189,9 +190,9 @@ out:
 }
 
 static int spi_pl022_configure(struct device *dev,
-				 const struct spi_config *config)
+			       const struct spi_config *config)
 {
-	const struct spi_pl022_config *cfg = dev->config->config_info;
+	const struct spi_pl022_config *cfg = dev->config_info;
 	struct spi_pl022_data *data = dev->driver_data;
 	u32_t base = cfg->base;
 
@@ -209,8 +210,8 @@ static int spi_pl022_configure(struct device *dev,
 	sys_clear_bit(SPI_REG_ADDR(base, SPI_CR1_OFFSET), MODE);
 
 	/* Setting Frame Format to SPI */
-	sys_set_bits(SPI_REG_ADDR(base, SPI_CR0_OFFSET),
-		     TWOBIT_MASK, FRF_SHIFT, FRF_SPI);
+	sys_set_bits(SPI_REG_ADDR(base, SPI_CR0_OFFSET), TWOBIT_MASK, FRF_SHIFT,
+		     FRF_SPI);
 
 	if ((config->operation & SPI_MODE_CPOL) != 0) {
 		/* Set CPOL if configured */
@@ -232,8 +233,8 @@ static int spi_pl022_configure(struct device *dev,
 	}
 
 	/* 8 bits frame per transfer */
-	sys_set_bits(SPI_REG_ADDR(base, SPI_CR0_OFFSET), NIBBLE_MASK,
-		     DSS_SHIFT, DSS_8BITS);
+	sys_set_bits(SPI_REG_ADDR(base, SPI_CR0_OFFSET), NIBBLE_MASK, DSS_SHIFT,
+		     DSS_8BITS);
 
 	/* Setting the configured frequency */
 	set_frequency(dev, config->frequency);
@@ -246,14 +247,12 @@ static int spi_pl022_configure(struct device *dev,
 	return 0;
 }
 
-static int transceive(struct device *dev,
-		      const struct spi_config *config,
+static int transceive(struct device *dev, const struct spi_config *config,
 		      const struct spi_buf_set *tx_bufs,
-		      const struct spi_buf_set *rx_bufs,
-		      bool asynchronous,
+		      const struct spi_buf_set *rx_bufs, bool asynchronous,
 		      struct k_poll_signal *signal)
 {
-	const struct spi_pl022_config *cfg = dev->config->config_info;
+	const struct spi_pl022_config *cfg = dev->config_info;
 	struct spi_pl022_data *data = dev->driver_data;
 	u32_t base = cfg->base;
 	int err;
@@ -297,19 +296,19 @@ static int spi_pl022_transceive(struct device *dev,
 
 #ifdef CONFIG_SPI_ASYNC
 static int spi_pl022_transceive_async(struct device *dev,
-					const struct spi_config *config,
-					const struct spi_buf_set *tx_bufs,
-					const struct spi_buf_set *rx_bufs,
-					struct k_poll_signal *async)
+				      const struct spi_config *config,
+				      const struct spi_buf_set *tx_bufs,
+				      const struct spi_buf_set *rx_bufs,
+				      struct k_poll_signal *async)
 {
 	return transceive(dev, config, tx_bufs, rx_bufs, true, async);
 }
 #endif /* CONFIG_SPI_ASYNC */
 
 static int spi_pl022_release(struct device *dev,
-			       const struct spi_config *config)
+			     const struct spi_config *config)
 {
-	const struct spi_pl022_config *cfg = dev->config->config_info;
+	const struct spi_pl022_config *cfg = dev->config_info;
 	struct spi_pl022_data *data = dev->driver_data;
 	u32_t base = cfg->base;
 
@@ -323,12 +322,12 @@ static int spi_pl022_release(struct device *dev,
 
 static int spi_pl022_ssp_init(struct device *dev)
 {
-	const struct spi_pl022_config *cfg = dev->config->config_info;
+	const struct spi_pl022_config *cfg = dev->config_info;
 	struct spi_pl022_data *data = dev->driver_data;
 
 	/* Enabling Power to SSP */
-	clock_control_on(device_get_binding(DT_CLOCK_CONTROL_LABEL),
-			 (clock_control_subsys_t) &cfg->pclk);
+	clock_control_on(device_get_binding(DT_INST_CLOCKS_LABEL(0)),
+			 (clock_control_subsys_t)&cfg->pclk);
 
 	/* Enabling Interrupt in NVIC */
 	cfg->config_func();
@@ -351,13 +350,10 @@ static const struct spi_driver_api spi_pl022_driver_api = {
 void spi_pl022_config_ssp0_irq(void);
 
 static const struct spi_pl022_config spi_pl022_ssp0_cfg = {
-	.base = DT_SSP0_BASE_ADDRESS,
+	.base = DT_INST_REG_ADDR(0),
 	.config_func = spi_pl022_config_ssp0_irq,
 #ifdef CONFIG_CLOCK_CONTROL_STELLARIS
-	.pclk = {
-		.bus = DT_SSP0_CLOCK_BUS,
-		.en = DT_SSP0_CLOCK_ENABLE
-	}
+	.pclk = { .bus = DT_INST_CLOCKS_CELL(0, bus), .en = 1 }
 #endif
 };
 
@@ -366,52 +362,16 @@ static struct spi_pl022_data spi_pl022_ssp0_data = {
 	SPI_CONTEXT_INIT_SYNC(spi_pl022_ssp0_data, ctx),
 };
 
-DEVICE_AND_API_INIT(spi_pl022_ssp0, DT_SSP0_NAME, &spi_pl022_ssp_init,
-		    &spi_pl022_ssp0_data, &spi_pl022_ssp0_cfg,
-		    POST_KERNEL, CONFIG_SPI_INIT_PRIORITY,
-		    &spi_pl022_driver_api);
+DEVICE_AND_API_INIT(spi_pl022_ssp0, DT_INST_LABEL(0), &spi_pl022_ssp_init,
+		    &spi_pl022_ssp0_data, &spi_pl022_ssp0_cfg, POST_KERNEL,
+		    CONFIG_SPI_INIT_PRIORITY, &spi_pl022_driver_api);
 
 void spi_pl022_config_ssp0_irq(void)
 {
-	IRQ_CONNECT(DT_SSP0_IRQ, DT_SSP0_IRQ_PRI,
-		    spi_pl022_isr, DEVICE_GET(spi_pl022_ssp0),
-		    DT_SSP_IRQ_FLAGS);
-	irq_enable(DT_SSP0_IRQ);
+	IRQ_CONNECT(DT_INST_IRQN(0), DT_INST_IRQ(0, priority),
+		    spi_pl022_isr, spi_pl022_isr, 0)
+
+	irq_enable(DT_INST_IRQN(0));
 }
 
 #endif /* CONFIG_SPI_0 */
-
-#ifdef CONFIG_SPI_1
-
-void spi_pl022_config_ssp1_irq(void);
-
-static const struct spi_pl022_config spi_pl022_ssp1_cfg = {
-	.base = DT_SSP1_BASE_ADDRESS,
-	.config_func = spi_pl022_config_ssp1_irq,
-#ifdef CONFIG_CLOCK_CONTROL_STELLARIS
-	.pclk = {
-		.bus = DT_SSP1_CLOCK_BUS,
-		.en = DT_SSP1_CLOCK_ENABLE
-	}
-#endif
-};
-
-static struct spi_pl022_data spi_pl022_ssp1_data = {
-	SPI_CONTEXT_INIT_LOCK(spi_pl022_ssp1_data, ctx),
-	SPI_CONTEXT_INIT_SYNC(spi_pl022_ssp1_data, ctx),
-};
-
-DEVICE_AND_API_INIT(spi_pl022_ssp1, DT_SSP1_NAME, &spi_pl022_ssp_init,
-		    &spi_pl022_ssp1_data, &spi_pl022_ssp1_cfg,
-		    POST_KERNEL, CONFIG_SPI_INIT_PRIORITY,
-		    &spi_pl022_driver_api);
-
-void spi_pl022_config_ssp1_irq(void)
-{
-	IRQ_CONNECT(DT_SSP1_IRQ, DT_SSP1_IRQ_PRI,
-		    spi_pl022_isr, DEVICE_GET(spi_pl022_ssp1),
-		    DT_SSP_IRQ_FLAGS);
-	irq_enable(DT_SSP1_IRQ);
-}
-
-#endif /* CONFIG_SPI_1 */
