@@ -2,6 +2,10 @@
 
 cmake_minimum_required(VERSION 3.13.1)
 
+if(BOARD MATCHES "qemu_.*")
+  list(APPEND QEMU_EXTRA_FLAGS  -device ssd0323 -display cocoa)
+endif()
+
 find_package(Zephyr HINTS $ENV{ZEPHYR_BASE})
 project(lvgl)
 
