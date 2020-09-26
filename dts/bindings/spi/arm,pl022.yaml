@@ -1,34 +1,23 @@
 #
 # Copyright (c) 2018, Zilogic Systems
+# Copyright (c) 2020, PlayerData Holdings Ltd
 #
 # SPDX-License-Identifier: Apache-2.0
 #
----
-title: ARM PL022 SPI
-version: 0.1
 
-description: >
-    This binding gives a base representation of the Pl022 SPI controller
+description: ARM PL022 SPI Controller
 
-inherits:
-    !include spi.yaml
+compatible: "arm,pl022"
+
+include: spi-controller.yaml
 
 properties:
-    compatible:
-      type: string
-      category: required
-      description: compatible strings
-      constraint: "arm,pl022"
-
     reg:
       type: array
       description: mmio register space
-      generation: define
-      category: required
+      required: true
 
     interrupts:
       type: array
-      category: required
+      required: true
       description: required interrupts
-      generation: define
-...
