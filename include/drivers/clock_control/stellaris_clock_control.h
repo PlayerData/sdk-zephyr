@@ -6,7 +6,7 @@
 #ifndef _STELLARIS_CLOCK_CONTROL_H_
 #define _STELLARIS_CLOCK_CONTROL_H_
 
-#include <clock_control.h>
+#include <drivers/clock_control.h>
 
 struct stellaris_clock_t {
 	u32_t bus;
