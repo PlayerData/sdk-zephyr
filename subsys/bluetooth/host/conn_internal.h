@@ -9,6 +9,7 @@
  */
 typedef enum __packed {
 	BT_CONN_DISCONNECTED,
+	BT_CONN_DISCONNECT_COMPLETE,
 	BT_CONN_CONNECT_SCAN,
 	BT_CONN_CONNECT_AUTO,
 	BT_CONN_CONNECT_ADV,
@@ -212,6 +213,13 @@ void bt_conn_disconnect_all(u8_t id);
 /* Look up an existing connection */
 struct bt_conn *bt_conn_lookup_handle(u16_t handle);
 
+static inline bool bt_conn_is_handle_valid(struct bt_conn *conn)
+{
+	return conn->state == BT_CONN_CONNECTED ||
+	       conn->state == BT_CONN_DISCONNECT ||
+	       conn->state == BT_CONN_DISCONNECT_COMPLETE;
+}
+
 /* Check if the connection is with the given peer. */
 bool bt_conn_is_peer_addr_le(const struct bt_conn *conn, u8_t id,
 			     const bt_addr_le_t *peer);
@@ -256,7 +264,8 @@ void bt_conn_identity_resolved(struct bt_conn *conn);
 
 #if defined(CONFIG_BT_SMP) || defined(CONFIG_BT_BREDR)
 /* Notify higher layers that connection security changed */
-void bt_conn_security_changed(struct bt_conn *conn, enum bt_security_err err);
+void bt_conn_security_changed(struct bt_conn *conn, uint8_t hci_err,
+			      enum bt_security_err err);
 #endif /* CONFIG_BT_SMP || CONFIG_BT_BREDR */
 
 /* Prepare a PDU to be sent over a connection */
