@@ -110,6 +110,8 @@ static inline const char *state2str(bt_conn_state_t state)
 	switch (state) {
 	case BT_CONN_DISCONNECTED:
 		return "disconnected";
+	case BT_CONN_DISCONNECT_COMPLETE:
+		return "disconnect-complete";
 	case BT_CONN_CONNECT_SCAN:
 		return "connect-scan";
 	case BT_CONN_CONNECT_DIR_ADV:
@@ -362,14 +364,6 @@ static void conn_update_timeout(struct k_work *work)
 		 * state transition.
 		 */
 		bt_conn_unref(conn);
-
-		/* A new reference likely to have been released here,
-		 * Resume advertising.
-		 */
-		if (IS_ENABLED(CONFIG_BT_PERIPHERAL)) {
-			bt_le_adv_resume();
-		}
-
 		return;
 	}
 
@@ -1077,9 +1071,12 @@ u8_t bt_conn_enc_key_size(struct bt_conn *conn)
 	return 0;
 }
 
-void bt_conn_security_changed(struct bt_conn *conn, enum bt_security_err err)
+void bt_conn_security_changed(struct bt_conn *conn, uint8_t hci_err,
+			      enum bt_security_err err)
 {
 	struct bt_conn_cb *cb;
+
+	bt_l2cap_security_changed(conn, hci_err);
 
 	for (cb = callback_list; cb; cb = cb->_next) {
 		if (cb->security_changed) {
@@ -1129,14 +1126,8 @@ int bt_conn_set_security(struct bt_conn *conn, bt_security_t sec)
 		return -ENOTCONN;
 	}
 
-	if (IS_ENABLED(CONFIG_BT_SMP_SC_ONLY) &&
-	    sec < BT_SECURITY_L4) {
-		return -EOPNOTSUPP;
-	}
-
-	if (IS_ENABLED(CONFIG_BT_SMP_OOB_LEGACY_PAIR_ONLY) &&
-	    sec > BT_SECURITY_L3) {
-		return -EOPNOTSUPP;
+	if (IS_ENABLED(CONFIG_BT_SMP_SC_ONLY)) {
+		sec = BT_SECURITY_L4;
 	}
 
 	/* nothing to do */
@@ -1716,9 +1707,7 @@ void bt_conn_set_state(struct bt_conn *conn, bt_conn_state_t state)
 		 * running.
 		 */
 		switch (old_state) {
-		case BT_CONN_CONNECTED:
-		case BT_CONN_DISCONNECT:
-			process_unack_tx(conn);
+		case BT_CONN_DISCONNECT_COMPLETE:
 			tx_notify(conn);
 
 			/* Cancel Connection Update if it is pending */
@@ -1774,8 +1763,11 @@ void bt_conn_set_state(struct bt_conn *conn, bt_conn_state_t state)
 			 */
 			bt_conn_unref(conn);
 			break;
+		case BT_CONN_CONNECTED:
+		case BT_CONN_DISCONNECT:
 		case BT_CONN_DISCONNECTED:
-			/* Cannot happen, no transition. */
+			/* Cannot happen. */
+			BT_WARN("Invalid (%u) old state", state);
 			break;
 		}
 		break;
@@ -1804,6 +1796,9 @@ void bt_conn_set_state(struct bt_conn *conn, bt_conn_state_t state)
 		break;
 	case BT_CONN_DISCONNECT:
 		break;
+	case BT_CONN_DISCONNECT_COMPLETE:
+		process_unack_tx(conn);
+		break;
 	default:
 		BT_WARN("no valid (%u) state was set", state);
 
@@ -1821,8 +1816,7 @@ struct bt_conn *bt_conn_lookup_handle(u16_t handle)
 		}
 
 		/* We only care about connections with a valid handle */
-		if (conns[i].state != BT_CONN_CONNECTED &&
-		    conns[i].state != BT_CONN_DISCONNECT) {
+		if (!bt_conn_is_handle_valid(&conns[i])) {
 			continue;
 		}
 
@@ -1838,8 +1832,7 @@ struct bt_conn *bt_conn_lookup_handle(u16_t handle)
 		}
 
 		/* We only care about connections with a valid handle */
-		if (sco_conns[i].state != BT_CONN_CONNECTED &&
-		    sco_conns[i].state != BT_CONN_DISCONNECT) {
+		if (!bt_conn_is_handle_valid(&conns[i])) {
 			continue;
 		}
 
@@ -1964,6 +1957,11 @@ void bt_conn_unref(struct bt_conn *conn)
 
 	BT_DBG("handle %u ref %u -> %u", conn->handle, old,
 	       atomic_get(&conn->ref));
+
+	if (IS_ENABLED(CONFIG_BT_PERIPHERAL) &&
+	    atomic_get(&conn->ref) == 0) {
+		bt_le_adv_resume();
+	}
 }
 
 const bt_addr_le_t *bt_conn_get_dst(const struct bt_conn *conn)

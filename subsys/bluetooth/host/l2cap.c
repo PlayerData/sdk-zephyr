@@ -454,25 +454,33 @@ static int l2cap_le_conn_req(struct bt_l2cap_le_chan *ch)
 
 static void l2cap_le_encrypt_change(struct bt_l2cap_chan *chan, u8_t status)
 {
+	int err;
+
 	/* Skip channels already connected or with a pending request */
 	if (chan->state != BT_L2CAP_CONNECT || chan->ident) {
 		return;
 	}
 
 	if (status) {
-		bt_l2cap_chan_remove(chan->conn, chan);
-		bt_l2cap_chan_del(chan);
-		return;
+		goto fail;
 	}
 
 	/* Retry to connect */
-	l2cap_le_conn_req(BT_L2CAP_LE_CHAN(chan));
+	err = l2cap_le_conn_req(BT_L2CAP_LE_CHAN(chan));
+	if (err) {
+		goto fail;
+	}
+
+	return;
+fail:
+	bt_l2cap_chan_remove(chan->conn, chan);
+	bt_l2cap_chan_del(chan);
 }
 #endif /* CONFIG_BT_L2CAP_DYNAMIC_CHANNEL */
 
-void bt_l2cap_encrypt_change(struct bt_conn *conn, u8_t hci_status)
+void bt_l2cap_security_changed(struct bt_conn *conn, u8_t hci_status)
 {
-	struct bt_l2cap_chan *chan;
+	struct bt_l2cap_chan *chan, *next;
 
 	if (IS_ENABLED(CONFIG_BT_BREDR) &&
 	    conn->type == BT_CONN_TYPE_BR) {
@@ -480,7 +488,7 @@ void bt_l2cap_encrypt_change(struct bt_conn *conn, u8_t hci_status)
 		return;
 	}
 
-	SYS_SLIST_FOR_EACH_CONTAINER(&conn->channels, chan, node) {
+	SYS_SLIST_FOR_EACH_CONTAINER_SAFE(&conn->channels, chan, next, node) {
 #if defined(CONFIG_BT_L2CAP_DYNAMIC_CHANNEL)
 		l2cap_le_encrypt_change(chan, hci_status);
 #endif
@@ -1030,20 +1038,24 @@ static void le_disconn_req(struct bt_l2cap *l2cap, u8_t ident,
 
 static int l2cap_change_security(struct bt_l2cap_le_chan *chan, u16_t err)
 {
+	struct bt_conn *conn = chan->chan.conn;
+	bt_security_t sec;
+
 	switch (err) {
 	case BT_L2CAP_LE_ERR_ENCRYPTION:
-		if (chan->chan.required_sec_level >= BT_SECURITY_L2) {
+		if (conn->sec_level >= BT_SECURITY_L2) {
 			return -EALREADY;
 		}
-		chan->chan.required_sec_level = BT_SECURITY_L2;
+
+		sec = BT_SECURITY_L2;
 		break;
 	case BT_L2CAP_LE_ERR_AUTHENTICATION:
-		if (chan->chan.required_sec_level < BT_SECURITY_L2) {
-			chan->chan.required_sec_level = BT_SECURITY_L2;
-		} else if (chan->chan.required_sec_level < BT_SECURITY_L3) {
-			chan->chan.required_sec_level = BT_SECURITY_L3;
-		} else if (chan->chan.required_sec_level < BT_SECURITY_L4) {
-			chan->chan.required_sec_level = BT_SECURITY_L4;
+		if (conn->sec_level < BT_SECURITY_L2) {
+			sec = BT_SECURITY_L2;
+		} else if (conn->sec_level < BT_SECURITY_L3) {
+			sec = BT_SECURITY_L3;
+		} else if (conn->sec_level < BT_SECURITY_L4) {
+			sec = BT_SECURITY_L4;
 		} else {
 			return -EALREADY;
 		}
@@ -1052,8 +1064,7 @@ static int l2cap_change_security(struct bt_l2cap_le_chan *chan, u16_t err)
 		return -EINVAL;
 	}
 
-	return bt_conn_set_security(chan->chan.conn,
-				    chan->chan.required_sec_level);
+	return bt_conn_set_security(chan->chan.conn, sec);
 }
 
 static void le_conn_rsp(struct bt_l2cap *l2cap, u8_t ident,
@@ -1929,6 +1940,8 @@ void bt_l2cap_init(void)
 static int l2cap_le_connect(struct bt_conn *conn, struct bt_l2cap_le_chan *ch,
 			    u16_t psm)
 {
+	int err;
+
 	if (psm < L2CAP_LE_PSM_FIXED_START || psm > L2CAP_LE_PSM_DYN_END) {
 		return -EINVAL;
 	}
@@ -1942,7 +1955,26 @@ static int l2cap_le_connect(struct bt_conn *conn, struct bt_l2cap_le_chan *ch,
 
 	ch->chan.psm = psm;
 
-	return l2cap_le_conn_req(ch);
+	if (conn->sec_level < ch->chan.required_sec_level) {
+		err = bt_conn_set_security(conn, ch->chan.required_sec_level);
+		if (err) {
+			goto fail;
+		}
+
+		return 0;
+	}
+
+	err = l2cap_le_conn_req(ch);
+	if (err) {
+		goto fail;
+	}
+
+	return 0;
+
+fail:
+	bt_l2cap_chan_remove(conn, &ch->chan);
+	bt_l2cap_chan_del(&ch->chan);
+	return err;
 }
 
 int bt_l2cap_chan_connect(struct bt_conn *conn, struct bt_l2cap_chan *chan,

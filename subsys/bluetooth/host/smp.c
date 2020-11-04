@@ -80,25 +80,13 @@
 #endif /* CONFIG_BT_BONDABLE */
 
 #if defined(CONFIG_BT_BREDR)
-
 #define BT_SMP_AUTH_MASK_SC	0x2f
-#if defined(CONFIG_BT_SMP_OOB_LEGACY_PAIR_ONLY)
-#define BT_SMP_AUTH_DEFAULT (BT_SMP_AUTH_BONDING_FLAGS | BT_SMP_AUTH_CT2)
+#define BT_SMP_AUTH_DEFAULT (BT_SMP_AUTH_BONDING_FLAGS | BT_SMP_AUTH_SC |\
+			     BT_SMP_AUTH_CT2)
 #else
-#define BT_SMP_AUTH_DEFAULT (BT_SMP_AUTH_BONDING_FLAGS | BT_SMP_AUTH_CT2 |\
-			     BT_SMP_AUTH_SC)
-#endif /* CONFIG_BT_SMP_OOB_LEGACY_PAIR_ONLY */
-
-#else
-
 #define BT_SMP_AUTH_MASK_SC	0x0f
-#if defined(CONFIG_BT_SMP_OOB_LEGACY_PAIR_ONLY)
-#define BT_SMP_AUTH_DEFAULT (BT_SMP_AUTH_BONDING_FLAGS)
-#else
 #define BT_SMP_AUTH_DEFAULT (BT_SMP_AUTH_BONDING_FLAGS | BT_SMP_AUTH_SC)
-#endif /* CONFIG_BT_SMP_OOB_LEGACY_PAIR_ONLY */
-
-#endif /* CONFIG_BT_BREDR */
+#endif
 
 enum pairing_method {
 	JUST_WORKS,		/* JustWorks pairing */
@@ -107,7 +95,6 @@ enum pairing_method {
 	PASSKEY_CONFIRM,	/* Passkey confirm */
 	PASSKEY_ROLE,		/* Passkey Entry depends on role */
 	LE_SC_OOB,		/* LESC Out of Band */
-	LEGACY_OOB,		/* Legacy Out of Band */
 };
 
 enum {
@@ -221,7 +208,6 @@ static const u8_t gen_method_legacy[5 /* remote */][5 /* local */] = {
 };
 #endif /* CONFIG_BT_SMP_SC_PAIR_ONLY */
 
-#if !defined(CONFIG_BT_SMP_OOB_LEGACY_PAIR_ONLY)
 /* based on table 2.8 Core Spec 2.3.5.1 Vol. 3 Part H */
 static const u8_t gen_method_sc[5 /* remote */][5 /* local */] = {
 	{ JUST_WORKS, JUST_WORKS, PASSKEY_INPUT, JUST_WORKS, PASSKEY_INPUT },
@@ -233,7 +219,6 @@ static const u8_t gen_method_sc[5 /* remote */][5 /* local */] = {
 	{ PASSKEY_DISPLAY, PASSKEY_CONFIRM, PASSKEY_INPUT, JUST_WORKS,
 	  PASSKEY_CONFIRM },
 };
-#endif /* !CONFIG_BT_SMP_OOB_LEGACY_PAIR_ONLY */
 
 static const u8_t sc_debug_public_key[64] = {
 	0xe6, 0x9d, 0x35, 0x0e, 0x48, 0x01, 0x03, 0xcc, 0xdb, 0xfd, 0xf4, 0xac,
@@ -361,14 +346,13 @@ static bool smp_keys_check(struct bt_conn *conn)
 
 static u8_t get_pair_method(struct bt_smp *smp, u8_t remote_io)
 {
+	struct bt_smp_pairing *req, *rsp;
+
 #if !defined(CONFIG_BT_SMP_SC_PAIR_ONLY)
 	if (!atomic_test_bit(smp->flags, SMP_FLAG_SC)) {
 		return legacy_get_pair_method(smp, remote_io);
 	}
 #endif
-
-#if !defined(CONFIG_BT_SMP_OOB_LEGACY_PAIR_ONLY)
-	struct bt_smp_pairing *req, *rsp;
 
 	req = (struct bt_smp_pairing *)&smp->preq[1];
 	rsp = (struct bt_smp_pairing *)&smp->prsp[1];
@@ -390,9 +374,6 @@ static u8_t get_pair_method(struct bt_smp *smp, u8_t remote_io)
 	}
 
 	return gen_method_sc[remote_io][get_io_capa()];
-#else
-	return JUST_WORKS;
-#endif
 }
 
 static enum bt_security_err auth_err_get(u8_t smp_err)
@@ -728,17 +709,6 @@ static bool update_keys_check(struct bt_smp *smp)
 
 	if (!conn->le.keys) {
 		conn->le.keys = bt_keys_get_addr(conn->id, &conn->le.dst);
-	}
-
-	if (IS_ENABLED(CONFIG_BT_SMP_DISABLE_LEGACY_JW_PASSKEY) &&
-	    !atomic_test_bit(smp->flags, SMP_FLAG_SC) &&
-	    smp->method != LEGACY_OOB) {
-		return false;
-	}
-
-	if (IS_ENABLED(CONFIG_BT_SMP_OOB_LEGACY_PAIR_ONLY) &&
-	    smp->method != LEGACY_OOB) {
-		return false;
 	}
 
 	if (!conn->le.keys ||
@@ -1835,7 +1805,8 @@ static void smp_pairing_complete(struct bt_smp *smp, u8_t status)
 		}
 
 		if (!atomic_test_bit(smp->flags, SMP_FLAG_KEYS_DISTR)) {
-			bt_conn_security_changed(smp->chan.chan.conn, auth_err);
+			bt_conn_security_changed(smp->chan.chan.conn, status,
+						 auth_err);
 		}
 
 		if (bt_auth && bt_auth->pairing_failed) {
@@ -2227,11 +2198,6 @@ static u8_t legacy_get_pair_method(struct bt_smp *smp, u8_t remote_io)
 	req = (struct bt_smp_pairing *)&smp->preq[1];
 	rsp = (struct bt_smp_pairing *)&smp->prsp[1];
 
-	/* if both sides have OOB data use OOB */
-	if ((req->oob_flag & rsp->oob_flag) & BT_SMP_OOB_DATA_MASK) {
-		return LEGACY_OOB;
-	}
-
 	/* if none side requires MITM use JustWorks */
 	if (!((req->auth_req | rsp->auth_req) & BT_SMP_AUTH_MITM)) {
 		return JUST_WORKS;
@@ -2272,19 +2238,6 @@ static u8_t legacy_request_tk(struct bt_smp *smp)
 	}
 
 	switch (smp->method) {
-	case LEGACY_OOB:
-		if (bt_auth && bt_auth->oob_data_request) {
-			struct bt_conn_oob_info info = {
-				.type = BT_CONN_OOB_LE_LEGACY,
-			};
-
-			atomic_set_bit(smp->flags, SMP_FLAG_USER);
-			bt_auth->oob_data_request(smp->chan.chan.conn, &info);
-		} else {
-			return BT_SMP_ERR_OOB_NOT_AVAIL;
-		}
-
-		break;
 	case PASSKEY_DISPLAY:
 		if (IS_ENABLED(CONFIG_BT_FIXED_PASSKEY) &&
 		    fixed_passkey != BT_PASSKEY_INVALID) {
@@ -2471,8 +2424,11 @@ static u8_t legacy_pairing_confirm(struct bt_smp *smp)
 	return 0;
 }
 
-static void legacy_user_tk_entry(struct bt_smp *smp)
+static void legacy_passkey_entry(struct bt_smp *smp, unsigned int passkey)
 {
+	passkey = sys_cpu_to_le32(passkey);
+	memcpy(smp->tk, &passkey, sizeof(passkey));
+
 	if (!atomic_test_and_clear_bit(smp->flags, SMP_FLAG_CFM_DELAYED)) {
 		return;
 	}
@@ -2492,14 +2448,6 @@ static void legacy_user_tk_entry(struct bt_smp *smp)
 	if (IS_ENABLED(CONFIG_BT_PERIPHERAL)) {
 		atomic_set_bit(&smp->allowed_cmds, BT_SMP_CMD_PAIRING_RANDOM);
 	}
-}
-
-static void legacy_passkey_entry(struct bt_smp *smp, unsigned int passkey)
-{
-	passkey = sys_cpu_to_le32(passkey);
-	memcpy(smp->tk, &passkey, sizeof(passkey));
-
-	legacy_user_tk_entry(smp);
 }
 
 static u8_t smp_encrypt_info(struct bt_smp *smp, struct net_buf *buf)
@@ -2630,9 +2578,7 @@ static int smp_init(struct bt_smp *smp)
 
 	atomic_set_bit(&smp->allowed_cmds, BT_SMP_CMD_PAIRING_FAIL);
 
-#if !defined(CONFIG_BT_SMP_OOB_LEGACY_PAIR_ONLY)
 	sc_public_key = bt_pub_key_get();
-#endif
 
 	return 0;
 }
@@ -2778,9 +2724,8 @@ bool bt_smp_request_ltk(struct bt_conn *conn, u64_t rand, u16_t ediv, u8_t *ltk)
 		/* Notify higher level that security failed if security was
 		 * initiated by slave.
 		 */
-		bt_conn_security_changed(smp->chan.chan.conn,
+		bt_conn_security_changed(conn, BT_HCI_ERR_PIN_OR_KEY_MISSING,
 					 BT_SECURITY_ERR_PIN_OR_KEY_MISSING);
-
 	}
 
 	smp_reset(smp);
@@ -3861,6 +3806,11 @@ static u8_t smp_security_request(struct bt_smp *smp, struct net_buf *buf)
 		auth = req->auth_req & BT_SMP_AUTH_MASK;
 	}
 
+	if (IS_ENABLED(CONFIG_BT_SMP_SC_PAIR_ONLY) &&
+	    !(auth & BT_SMP_AUTH_SC)) {
+		return BT_SMP_ERR_AUTH_REQUIREMENTS;
+	}
+
 	if (IS_ENABLED(CONFIG_BT_BONDING_REQUIRED) &&
 	    !(bondable && (auth & BT_SMP_AUTH_BONDING))) {
 		/* Reject security req if not both intend to bond */
@@ -3934,10 +3884,6 @@ static u8_t smp_security_request(struct bt_smp *smp, struct net_buf *buf)
 
 static u8_t generate_dhkey(struct bt_smp *smp)
 {
-	if (IS_ENABLED(CONFIG_BT_SMP_OOB_LEGACY_PAIR_ONLY)) {
-		return BT_SMP_ERR_UNSPECIFIED;
-	}
-
 	if (bt_dh_key_gen(smp->pkey, bt_smp_dhkey_ready)) {
 		return BT_SMP_ERR_UNSPECIFIED;
 	}
@@ -5086,31 +5032,6 @@ int bt_smp_auth_passkey_confirm(struct bt_conn *conn)
 	return 0;
 }
 
-#if !defined(CONFIG_BT_SMP_SC_PAIR_ONLY)
-int bt_smp_le_oob_set_tk(struct bt_conn *conn, const u8_t *tk)
-{
-	struct bt_smp *smp;
-
-	smp = smp_chan_get(conn);
-	if (!smp || !tk) {
-		return -EINVAL;
-	}
-
-	BT_DBG("%s", bt_hex(tk, 16));
-
-	if (!atomic_test_and_clear_bit(smp->flags, SMP_FLAG_USER)) {
-		return -EINVAL;
-	}
-
-	memcpy(smp->tk, tk, 16*sizeof(u8_t));
-
-	legacy_user_tk_entry(smp);
-
-	return 0;
-}
-#endif /* !defined(CONFIG_BT_SMP_SC_PAIR_ONLY) */
-
-#if !defined(CONFIG_BT_SMP_OOB_LEGACY_PAIR_ONLY)
 int bt_smp_le_oob_generate_sc_data(struct bt_le_oob_sc_data *le_sc_oob)
 {
 	int err;
@@ -5144,9 +5065,7 @@ int bt_smp_le_oob_generate_sc_data(struct bt_le_oob_sc_data *le_sc_oob)
 
 	return 0;
 }
-#endif /* !defined(CONFIG_BT_SMP_OOB_LEGACY_PAIR_ONLY) */
 
-#if !defined(CONFIG_BT_SMP_OOB_LEGACY_PAIR_ONLY)
 static bool le_sc_oob_data_check(struct bt_smp *smp, bool oobd_local_present,
 				 bool oobd_remote_present)
 {
@@ -5250,7 +5169,6 @@ int bt_smp_le_oob_get_sc_data(struct bt_conn *conn,
 
 	return 0;
 }
-#endif /* !CONFIG_BT_SMP_OOB_LEGACY_PAIR_ONLY */
 
 int bt_smp_auth_cancel(struct bt_conn *conn)
 {
@@ -5272,7 +5190,6 @@ int bt_smp_auth_cancel(struct bt_conn *conn)
 	case PASSKEY_CONFIRM:
 		return smp_error(smp, BT_SMP_ERR_CONFIRM_FAILED);
 	case LE_SC_OOB:
-	case LEGACY_OOB:
 		return smp_error(smp, BT_SMP_ERR_OOB_NOT_AVAIL);
 	case JUST_WORKS:
 		return smp_error(smp, BT_SMP_ERR_UNSPECIFIED);
@@ -5448,7 +5365,6 @@ void bt_smp_update_keys(struct bt_conn *conn)
 	case PASSKEY_INPUT:
 	case PASSKEY_CONFIRM:
 	case LE_SC_OOB:
-	case LEGACY_OOB:
 		conn->le.keys->flags |= BT_KEYS_AUTHENTICATED;
 		break;
 	case JUST_WORKS:
@@ -5520,10 +5436,6 @@ static bool le_sc_supported(void)
 	 * "LE Read Local P-256 Public Key" and "LE Generate DH Key" commands.
 	 * Otherwise LE SC are not supported.
 	 */
-	if (IS_ENABLED(CONFIG_BT_SMP_OOB_LEGACY_PAIR_ONLY)) {
-		return false;
-	}
-
 	return BT_CMD_TEST(bt_dev.supported_commands, 34, 1) &&
 	       BT_CMD_TEST(bt_dev.supported_commands, 34, 2);
 }
@@ -5553,9 +5465,7 @@ int bt_smp_init(void)
 
 	BT_DBG("LE SC %s", sc_supported ? "enabled" : "disabled");
 
-	if (!IS_ENABLED(CONFIG_BT_SMP_OOB_LEGACY_PAIR_ONLY)) {
-		bt_pub_key_gen(&pub_key_cb);
-	}
+	bt_pub_key_gen(&pub_key_cb);
 
 	return smp_self_test();
 }
