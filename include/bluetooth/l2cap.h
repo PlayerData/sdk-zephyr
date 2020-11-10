@@ -82,6 +82,9 @@ typedef enum bt_l2cap_chan_status {
 	 */
 	BT_L2CAP_STATUS_SHUTDOWN,
 
+	/** @brief Channel encryption pending status */
+	BT_L2CAP_STATUS_ENCRYPT_PENDING,
+
 	/* Total number of status - must be at the end of the enum */
 	BT_L2CAP_NUM_STATUS,
 } __packed bt_l2cap_chan_status_t;
@@ -101,9 +104,9 @@ struct bt_l2cap_chan {
 #if defined(CONFIG_BT_L2CAP_DYNAMIC_CHANNEL)
 	bt_l2cap_chan_state_t		state;
 	/** Remote PSM to be connected */
-	u16_t				psm;
+	uint16_t				psm;
 	/** Helps match request context during CoC */
-	u8_t				ident;
+	uint8_t				ident;
 	bt_security_t			required_sec_level;
 #endif /* CONFIG_BT_L2CAP_DYNAMIC_CHANNEL */
 };
@@ -111,13 +114,13 @@ struct bt_l2cap_chan {
 /** @brief LE L2CAP Endpoint structure. */
 struct bt_l2cap_le_endpoint {
 	/** Endpoint CID */
-	u16_t				cid;
+	uint16_t				cid;
 	/** Endpoint Maximum Transmission Unit */
-	u16_t				mtu;
+	uint16_t				mtu;
 	/** Endpoint Maximum PDU payload Size */
-	u16_t				mps;
+	uint16_t				mps;
 	/** Endpoint initial credits */
-	u16_t				init_credits;
+	uint16_t				init_credits;
 	/** Endpoint credits */
 	atomic_t			credits;
 };
@@ -138,7 +141,7 @@ struct bt_l2cap_le_chan {
 	struct k_work			tx_work;
 	/** Segment SDU packet from upper layer */
 	struct net_buf			*_sdu;
-	u16_t				_sdu_len;
+	uint16_t				_sdu_len;
 
 	struct k_work			rx_work;
 	struct k_fifo			rx_queue;
@@ -158,9 +161,9 @@ struct bt_l2cap_le_chan {
 /** @brief BREDR L2CAP Endpoint structure. */
 struct bt_l2cap_br_endpoint {
 	/** Endpoint CID */
-	u16_t				cid;
+	uint16_t				cid;
 	/** Endpoint Maximum Transmission Unit */
-	u16_t				mtu;
+	uint16_t				mtu;
 };
 
 /** @brief BREDR L2CAP Channel structure. */
@@ -211,12 +214,13 @@ struct bt_l2cap_chan_ops {
 	 *  by HCI layer and set to 0 when success and to non-zero (reference to
 	 *  HCI Error Codes) when security/authentication failed.
 	 */
-	void (*encrypt_change)(struct bt_l2cap_chan *chan, u8_t hci_status);
+	void (*encrypt_change)(struct bt_l2cap_chan *chan, uint8_t hci_status);
 
 	/** @brief Channel alloc_buf callback
 	 *
 	 *  If this callback is provided the channel will use it to allocate
-	 *  buffers to store incoming data.
+	 *  buffers to store incoming data. Channels that requires segmentation
+	 *  must set this callback.
 	 *
 	 *  @param chan The channel requesting a buffer.
 	 *
@@ -257,6 +261,13 @@ struct bt_l2cap_chan_ops {
 	 *  @param status The channel status
 	 */
 	void (*status)(struct bt_l2cap_chan *chan, atomic_t *status);
+
+	/* @brief Channel released callback
+	 *
+	 * If this callback is set it is called when the stack has release all
+	 * references to the channel object.
+	 */
+	void (*released)(struct bt_l2cap_chan *chan);
 };
 
 /** @def BT_L2CAP_CHAN_SEND_RESERVE
@@ -279,7 +290,7 @@ struct bt_l2cap_server {
 	 *                  recommended however), or auto-allocated by the
 	 *                  stack if the app gave 0 as the value.
 	 */
-	u16_t			psm;
+	uint16_t			psm;
 
 	/** Required minimim security level */
 	bt_security_t		sec_level;
@@ -335,6 +346,21 @@ int bt_l2cap_server_register(struct bt_l2cap_server *server);
  */
 int bt_l2cap_br_server_register(struct bt_l2cap_server *server);
 
+/** @brief Connect Enhanced Credit Based L2CAP channels
+ *
+ *  Connect up to 5 L2CAP channels by PSM, once the connection is completed
+ *  each channel connected() callback will be called. If the connection is
+ *  rejected disconnected() callback is called instead.
+ *
+ *  @param conn Connection object.
+ *  @param chans Array of channel objects.
+ *  @param psm Channel PSM to connect to.
+ *
+ *  @return 0 in case of success or negative value in case of error.
+ */
+int bt_l2cap_ecred_chan_connect(struct bt_conn *conn,
+				struct bt_l2cap_chan **chans, uint16_t psm);
+
 /** @brief Connect L2CAP channel
  *
  *  Connect L2CAP channel by PSM, once the connection is completed channel
@@ -354,7 +380,7 @@ int bt_l2cap_br_server_register(struct bt_l2cap_server *server);
  *  @return 0 in case of success or negative value in case of error.
  */
 int bt_l2cap_chan_connect(struct bt_conn *conn, struct bt_l2cap_chan *chan,
-			  u16_t psm);
+			  uint16_t psm);
 
 /** @brief Disconnect L2CAP channel
  *
