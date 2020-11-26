@@ -23,9 +23,9 @@
 int bt_rpmsg_platform_init(void);
 int bt_rpmsg_platform_send(struct net_buf *buf);
 
-static bool is_hci_event_discardable(const u8_t *evt_data)
+static bool is_hci_event_discardable(const uint8_t *evt_data)
 {
-	u8_t evt_type = evt_data[0];
+	uint8_t evt_type = evt_data[0];
 
 	switch (evt_type) {
 #if defined(CONFIG_BT_BREDR)
@@ -34,7 +34,7 @@ static bool is_hci_event_discardable(const u8_t *evt_data)
 		return true;
 #endif
 	case BT_HCI_EVT_LE_META_EVENT: {
-		u8_t subevt_type = evt_data[sizeof(struct bt_hci_evt_hdr)];
+		uint8_t subevt_type = evt_data[sizeof(struct bt_hci_evt_hdr)];
 
 		switch (subevt_type) {
 		case BT_HCI_EVT_LE_ADVERTISING_REPORT:
@@ -48,7 +48,7 @@ static bool is_hci_event_discardable(const u8_t *evt_data)
 	}
 }
 
-static struct net_buf *bt_rpmsg_evt_recv(u8_t *data, size_t remaining)
+static struct net_buf *bt_rpmsg_evt_recv(uint8_t *data, size_t remaining)
 {
 	bool discardable;
 	struct bt_hci_evt_hdr hdr;
@@ -87,7 +87,7 @@ static struct net_buf *bt_rpmsg_evt_recv(u8_t *data, size_t remaining)
 	return buf;
 }
 
-static struct net_buf *bt_rpmsg_acl_recv(u8_t *data, size_t remaining)
+static struct net_buf *bt_rpmsg_acl_recv(uint8_t *data, size_t remaining)
 {
 	struct bt_hci_acl_hdr hdr;
 	struct net_buf *buf;
@@ -121,9 +121,9 @@ static struct net_buf *bt_rpmsg_acl_recv(u8_t *data, size_t remaining)
 	return buf;
 }
 
-void bt_rpmsg_rx(u8_t *data, size_t len)
+void bt_rpmsg_rx(uint8_t *data, size_t len)
 {
-	u8_t pkt_indicator;
+	uint8_t pkt_indicator;
 	struct net_buf *buf = NULL;
 	size_t remaining = len;
 
@@ -158,7 +158,7 @@ void bt_rpmsg_rx(u8_t *data, size_t len)
 static int bt_rpmsg_send(struct net_buf *buf)
 {
 	int err;
-	u8_t pkt_indicator;
+	uint8_t pkt_indicator;
 
 	BT_DBG("buf %p type %u len %u", buf, bt_buf_get_type(buf), buf->len);
 
@@ -198,9 +198,12 @@ static const struct bt_hci_driver drv = {
 	.open		= bt_rpmsg_open,
 	.send		= bt_rpmsg_send,
 	.bus		= BT_HCI_DRIVER_BUS_IPM,
+#if defined(BT_DRIVER_QUIRK_NO_AUTO_DLE)
+	.quirks         = BT_QUIRK_NO_AUTO_DLE,
+#endif
 };
 
-static int bt_rpmsg_init(struct device *unused)
+static int bt_rpmsg_init(const struct device *unused)
 {
 	ARG_UNUSED(unused);
 

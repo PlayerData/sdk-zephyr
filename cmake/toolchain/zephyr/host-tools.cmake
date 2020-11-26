@@ -12,7 +12,7 @@ set(MINIMUM_REQUIRED_SDK_VERSION 0.11.3)
 
 # This is the minimum required version for Zephyr to work (Old style)
 set(REQUIRED_SDK_VER 0.11.1)
-set(TOOLCHAIN_ARCH x86_64)
+cmake_host_system_information(RESULT TOOLCHAIN_ARCH QUERY OS_PLATFORM)
 
 set_ifndef(ZEPHYR_TOOLCHAIN_VARIANT $ENV{ZEPHYR_TOOLCHAIN_VARIANT} "")
 set_ifndef(ZEPHYR_SDK_INSTALL_DIR   $ENV{ZEPHYR_SDK_INSTALL_DIR} "")
@@ -39,7 +39,16 @@ if(("zephyr" STREQUAL ${ZEPHYR_TOOLCHAIN_VARIANT}) OR
   SET(CMAKE_FIND_PACKAGE_SORT_ORDER NATURAL)
 
   if(DEFINED ZEPHYR_SDK_INSTALL_DIR)
+    # The Zephyr SDK will automatically set the toolchain variant.
+    # To support Zephyr SDK tools (DTC, and other tools) with 3rd party toolchains
+    # then we keep track of current toolchain variant.
+    set(ZEPHYR_CURRENT_TOOLCHAIN_VARIANT ${ZEPHYR_TOOLCHAIN_VARIANT})
     find_package(Zephyr-sdk ${MINIMUM_REQUIRED_SDK_VERSION} QUIET HINTS $ENV{ZEPHYR_SDK_INSTALL_DIR})
+    if(ZEPHYR_CURRENT_TOOLCHAIN_VARIANT)
+      if(NOT "zephyr" STREQUAL ${ZEPHYR_CURRENT_TOOLCHAIN_VARIANT})
+        set(ZEPHYR_TOOLCHAIN_VARIANT ${ZEPHYR_CURRENT_TOOLCHAIN_VARIANT})
+      endif()
+    endif()
   else()
     find_package(Zephyr-sdk ${MINIMUM_REQUIRED_SDK_VERSION} QUIET PATHS
                  /usr

@@ -6,6 +6,7 @@ menuconfig NORDIC_QSPI_NOR
 	select FLASH_HAS_DRIVER_ENABLED
 	select NRFX_QSPI
 	depends on HAS_HW_NRF_QSPI
+	depends on MULTITHREADING
 	help
 	  Enable support for nrfx QSPI driver with EasyDMA.
 
@@ -29,16 +30,15 @@ config NORDIC_QSPI_NOR_FLASH_LAYOUT_PAGE_SIZE
 	  that API.  By default the page size corresponds to the block
 	  size (65536).  Other option include the sector size (4096).
 
-config NORDIC_QSPI_NOR_FLASH_ALLOW_STACK_USAGE_FOR_DATA_IN_FLASH
-	bool "Use stack for writing data stored in flash"
+config NORDIC_QSPI_NOR_STACK_WRITE_BUFFER_SIZE
+	int "Size of a stack-based buffer to support writes from NVMC"
+	default 0
 	help
-	  When this option is enabled writing data from FLASH is possible.
-	  However the driver will use stack to copy the data from flash onto
-	  the stack then start the DMA transfer. If you get an -EINVALID error
-	  this could be due to the data being in flash. Either copy the data
-	  locally or enable this option. This uses a 4 byte buffer to copy the
-	  data which has a performance penalty for large chunks of data. If the
-	  data is less than a word the function will already copy the data into
-	  ram.
+	  The QSPI peripheral uses DMA and cannot write data that is
+	  read from the internal flash.  A non-zero value here enables
+	  a stack buffer into which data is copied to allow the write
+	  to proceed.  Multiple transfers will be initiated if the
+	  data is larger than the configured limit.  Must be a
+	  multiple of 4.  The feature is disabled when set to 0.
 
 endif # NORDIC_QSPI_NOR

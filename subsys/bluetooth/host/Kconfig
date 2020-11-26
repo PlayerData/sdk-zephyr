@@ -159,7 +159,14 @@ config BT_RX_PRIO
 	depends on BT_HCI_HOST || BT_RECV_IS_RX_THREAD
 	default 8
 
+config BT_DRIVER_RX_HIGH_PRIO
+	# Hidden option for Co-Operative HCI driver RX thread priority
+	int
+	default 6
+
 if BT_HCI_HOST
+
+source "subsys/bluetooth/host/audio/Kconfig"
 
 config BT_HOST_CRYPTO
 	# Hidden option that compiles in random number generation and AES
@@ -324,7 +331,6 @@ config BT_SMP
 	select TINYCRYPT_AES
 	select TINYCRYPT_AES_CMAC
 	select BT_RPA
-	select BT_ECC
 	help
 	  This option enables support for the Security Manager Protocol
 	  (SMP), making it possible to pair devices over LE.
@@ -380,6 +386,20 @@ config BT_SMP_SC_ONLY
 	  Security Mode 1 Level 4 stands for authenticated LE Secure Connections
 	  pairing with encryption. Enabling this option disables legacy pairing.
 
+config BT_SMP_OOB_LEGACY_PAIR_ONLY
+	bool "Force Out Of Band Legacy pairing"
+	depends on !(BT_SMP_SC_PAIR_ONLY || BT_SMP_SC_ONLY)
+	help
+	  This option disables Legacy and LE SC pairing and forces legacy OOB.
+
+config BT_SMP_DISABLE_LEGACY_JW_PASSKEY
+	bool "Forbid usage of insecure legacy pairing methods"
+	depends on !(BT_SMP_SC_PAIR_ONLY || BT_SMP_SC_ONLY || \
+		     BT_SMP_OOB_LEGACY_PAIR_ONLY)
+	help
+	  This option disables Just Works and Passkey legacy pairing methods to
+	  increase security.
+
 config BT_SMP_ALLOW_UNAUTH_OVERWRITE
 	bool "Allow unauthenticated pairing for paired device"
 	help
@@ -417,10 +437,10 @@ config BT_USE_DEBUG_KEYS
 	help
 	  This option places Security Manager in a Debug Mode. In this mode
 	  predefined Diffie-Hellman private/public key pair is used as described
-	  in Core Specification Vol. 3, Part H, 2.3.5.6.1. This option should
-	  only be enabled for debugging and should never be used in production.
-	  If this option is enabled anyone is able to decipher encrypted air
-	  traffic.
+	  in Core Specification Vol. 3, Part H, 2.3.5.6.1.
+
+	  WARNING: This option enables anyone to decrypt on-air traffic.
+	  Use of this feature in production is strongly discouraged.
 
 config BT_BONDABLE
 	bool "Bondable Mode"
@@ -442,8 +462,12 @@ config BT_STORE_DEBUG_KEYS
 	bool "Store Debug Mode bonds"
 	help
 	  This option enables support for storing bonds where either of devices
-	  has the Security Manager in Debug mode. This option should
-	  only be enabled for debugging and should never be used in production.
+	  is using the predefined Diffie-Hellman private/public key pair as
+	  described in the Core Specification Vol 3, Part H, 2.3.5.6.1.
+
+	  WARNING: This option potentially enables anyone to decrypt on-air
+	  traffic.
+	  Use of this feature in production is strongly discouraged.
 
 config BT_SMP_ENFORCE_MITM
 	bool "Enforce MITM protection"
@@ -459,8 +483,10 @@ config BT_OOB_DATA_FIXED
 	help
 	  With this option enabled, the application will be able to perform LESC
 	  pairing with OOB data that consists of fixed random number and confirm
-	  value. This option should only be enabled for debugging and should
-	  never be used in production.
+	  value.
+
+	  WARNING: This option stores a hardcoded Out-of-Band value in the image.
+	  Use of this feature in production is strongly discouraged.
 
 config BT_KEYS_OVERWRITE_OLDEST
 	bool "Overwrite oldest keys with new ones if key storage is full"
@@ -576,7 +602,7 @@ endif # BT_HCI_HOST
 
 config BT_ECC
 	bool "Enable ECDH key generation support"
-	default y if BT_MESH_PROV || BT_SMP
+	default y if BT_MESH_PROV || (BT_SMP && !BT_SMP_OOB_LEGACY_PAIR_ONLY)
 	help
 	  This option adds support for ECDH HCI commands.
 
@@ -633,6 +659,10 @@ config BT_DEBUG_KEYS
 	  This option enables debug support for the handling of
 	  Bluetooth security keys.
 
+	  WARNING: This option prints out private security keys such as
+	  the Long Term Key.
+	  Use of this feature in production is strongly discouraged.
+
 config BT_DEBUG_SMP
 	bool "Bluetooth Security Manager Protocol (SMP) debug"
 	depends on BT_HCI_HOST
@@ -640,6 +670,10 @@ config BT_DEBUG_SMP
 	help
 	  This option enables debug support for the Bluetooth
 	  Security Manager Protocol (SMP).
+
+	  WARNING: This option prints out private security keys such as
+	  the Long Term Key.
+	  Use of this feature in production is strongly discouraged.
 
 config BT_SMP_SELFTEST
 	bool "Bluetooth SMP self tests executed on init"
@@ -704,6 +738,17 @@ config BT_TESTING
 	help
 	  This option enables custom Bluetooth testing interface.
 	  Shall only be used for testing purposes.
+
+config BT_CONN_DISABLE_SECURITY
+	bool "Disable security"
+	depends on BT_TESTING
+	help
+	  This option disables security checks for incoming requests enabling
+	  to test accessing GATT attributes and L2CAP channels that would
+	  otherwise require encryption/authentication in order to be accessed.
+
+	  WARNING: This option enables anyone to snoop on-air traffic.
+	  Use of this feature in production is strongly discouraged.
 
 config BT_BREDR
 	bool "Bluetooth BR/EDR support [EXPERIMENTAL]"

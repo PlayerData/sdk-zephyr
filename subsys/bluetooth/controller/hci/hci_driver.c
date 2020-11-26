@@ -45,10 +45,6 @@
 #include "ll_sw/lll.h"
 #include "ll.h"
 
-#if (!defined(CONFIG_BT_LL_SW_SPLIT))
-#include "ll_sw/ctrl.h"
-#endif /* CONFIG_BT_LL_SW_SPLIT */
-
 #include "hci_internal.h"
 
 #include "hal/debug.h"
@@ -57,16 +53,16 @@ static K_SEM_DEFINE(sem_prio_recv, 0, UINT_MAX);
 static K_FIFO_DEFINE(recv_fifo);
 
 struct k_thread prio_recv_thread_data;
-static K_THREAD_STACK_DEFINE(prio_recv_thread_stack,
+static K_KERNEL_STACK_DEFINE(prio_recv_thread_stack,
 			     CONFIG_BT_CTLR_RX_PRIO_STACK_SIZE);
 struct k_thread recv_thread_data;
-static K_THREAD_STACK_DEFINE(recv_thread_stack, CONFIG_BT_RX_STACK_SIZE);
+static K_KERNEL_STACK_DEFINE(recv_thread_stack, CONFIG_BT_RX_STACK_SIZE);
 
 #if defined(CONFIG_BT_HCI_ACL_FLOW_CONTROL)
 static struct k_poll_signal hbuf_signal =
 		K_POLL_SIGNAL_INITIALIZER(hbuf_signal);
 static sys_slist_t hbuf_pend;
-static s32_t hbuf_count;
+static int32_t hbuf_count;
 #endif
 
 static struct net_buf *process_prio_evt(struct node_rx_pdu *node_rx,
@@ -74,8 +70,8 @@ static struct net_buf *process_prio_evt(struct node_rx_pdu *node_rx,
 {
 #if defined(CONFIG_BT_CONN)
 	if (node_rx->hdr.user_meta == HCI_CLASS_EVT_CONNECTION) {
-		u16_t handle;
-		struct pdu_data *pdu_data = PDU_DATA(node_rx);
+		uint16_t handle;
+		struct pdu_data *pdu_data = (void *)node_rx->pdu;
 
 		handle = node_rx->hdr.handle;
 		if (node_rx->hdr.type == NODE_RX_TYPE_TERMINATE) {
@@ -85,8 +81,7 @@ static struct net_buf *process_prio_evt(struct node_rx_pdu *node_rx,
 					     K_FOREVER);
 			hci_disconn_complete_encode(pdu_data, handle, buf);
 			hci_disconn_complete_process(handle);
-			*evt_flags = BT_HCI_EVT_FLAG_RECV_PRIO |
-				     BT_HCI_EVT_FLAG_RECV;
+			*evt_flags = BT_HCI_EVT_FLAG_RECV_PRIO | BT_HCI_EVT_FLAG_RECV;
 			return buf;
 		}
 	}
@@ -109,8 +104,8 @@ static void prio_recv_thread(void *p1, void *p2, void *p3)
 	while (1) {
 		struct node_rx_pdu *node_rx;
 		struct net_buf *buf;
-		u8_t num_cmplt;
-		u16_t handle;
+		uint8_t num_cmplt;
+		uint16_t handle;
 
 		/* While there are completed rx nodes */
 		while ((num_cmplt = ll_rx_get((void *)&node_rx, &handle))) {
@@ -126,7 +121,7 @@ static void prio_recv_thread(void *p1, void *p2, void *p3)
 		}
 
 		if (node_rx) {
-			u8_t evt_flags;
+			uint8_t evt_flags;
 
 			/* Until now we've only peeked, now we really do
 			 * the handover
@@ -181,7 +176,7 @@ static void prio_recv_thread(void *p1, void *p2, void *p3)
 }
 
 static inline struct net_buf *encode_node(struct node_rx_pdu *node_rx,
-					  s8_t class)
+					  int8_t class)
 {
 	struct net_buf *buf = NULL;
 
@@ -221,7 +216,7 @@ static inline struct net_buf *encode_node(struct node_rx_pdu *node_rx,
 
 static inline struct net_buf *process_node(struct node_rx_pdu *node_rx)
 {
-	u8_t class = node_rx->hdr.user_meta;
+	uint8_t class = node_rx->hdr.user_meta;
 	struct net_buf *buf = NULL;
 
 #if defined(CONFIG_BT_HCI_ACL_FLOW_CONTROL)
@@ -237,7 +232,7 @@ static inline struct net_buf *process_node(struct node_rx_pdu *node_rx)
 		case HCI_CLASS_EVT_LLCP:
 			/* for conn-related events, only pend is relevant */
 			hbuf_count = 1;
-			/* fallthrough */
+			__fallthrough;
 		case HCI_CLASS_ACL_DATA:
 			if (pend || !hbuf_count) {
 				sys_slist_append(&hbuf_pend, (void *)node_rx);
@@ -263,9 +258,9 @@ static inline struct net_buf *process_hbuf(struct node_rx_pdu *n)
 {
 	/* shadow total count in case of preemption */
 	struct node_rx_pdu *node_rx = NULL;
-	s32_t hbuf_total = hci_hbuf_total;
+	int32_t hbuf_total = hci_hbuf_total;
 	struct net_buf *buf = NULL;
-	u8_t class;
+	uint8_t class;
 	int reset;
 
 	reset = atomic_test_and_clear_bit(&hci_state_mask, HCI_STATE_BIT_RESET);
@@ -451,7 +446,7 @@ static int acl_handle(struct net_buf *buf)
 
 static int hci_driver_send(struct net_buf *buf)
 {
-	u8_t type;
+	uint8_t type;
 	int err;
 
 	BT_DBG("enter");
@@ -487,7 +482,7 @@ static int hci_driver_send(struct net_buf *buf)
 
 static int hci_driver_open(void)
 {
-	u32_t err;
+	uint32_t err;
 
 	DEBUG_INIT();
 
@@ -504,13 +499,13 @@ static int hci_driver_open(void)
 #endif
 
 	k_thread_create(&prio_recv_thread_data, prio_recv_thread_stack,
-			K_THREAD_STACK_SIZEOF(prio_recv_thread_stack),
+			K_KERNEL_STACK_SIZEOF(prio_recv_thread_stack),
 			prio_recv_thread, NULL, NULL, NULL,
-			K_PRIO_COOP(CONFIG_BT_CTLR_RX_PRIO), 0, K_NO_WAIT);
+			K_PRIO_COOP(CONFIG_BT_DRIVER_RX_HIGH_PRIO), 0, K_NO_WAIT);
 	k_thread_name_set(&prio_recv_thread_data, "BT RX pri");
 
 	k_thread_create(&recv_thread_data, recv_thread_stack,
-			K_THREAD_STACK_SIZEOF(recv_thread_stack),
+			K_KERNEL_STACK_SIZEOF(recv_thread_stack),
 			recv_thread, NULL, NULL, NULL,
 			K_PRIO_COOP(CONFIG_BT_RX_PRIO), 0, K_NO_WAIT);
 	k_thread_name_set(&recv_thread_data, "BT RX");
@@ -523,11 +518,12 @@ static int hci_driver_open(void)
 static const struct bt_hci_driver drv = {
 	.name	= "Controller",
 	.bus	= BT_HCI_DRIVER_BUS_VIRTUAL,
+	.quirks = BT_QUIRK_NO_AUTO_DLE,
 	.open	= hci_driver_open,
 	.send	= hci_driver_send,
 };
 
-static int hci_driver_init(struct device *unused)
+static int hci_driver_init(const struct device *unused)
 {
 	ARG_UNUSED(unused);
 

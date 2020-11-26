@@ -15,10 +15,8 @@
 #include <kernel_structs.h>
 #include <debug/object_tracing_common.h>
 #include <toolchain.h>
-#include <linker/sections.h>
 #include <wait_q.h>
 #include <ksched.h>
-#include <sys/sflist.h>
 #include <init.h>
 #include <syscall_handler.h>
 #include <kernel_internal.h>
@@ -33,7 +31,7 @@ void *z_queue_node_peek(sys_sfnode_t *node, bool needs_free)
 {
 	void *ret;
 
-	if ((node != NULL) && (sys_sfnode_flags_get(node) != (u8_t)0)) {
+	if ((node != NULL) && (sys_sfnode_flags_get(node) != (uint8_t)0)) {
 		/* If the flag is set, then the enqueue operation for this item
 		 * did a behind-the scenes memory allocation of an alloc_node
 		 * struct, which is what got put in the queue. Free it and pass
@@ -64,7 +62,7 @@ struct k_queue *_trace_list_k_queue;
 /*
  * Complete initialization of statically defined queues.
  */
-static int init_queue_module(struct device *dev)
+static int init_queue_module(const struct device *dev)
 {
 	ARG_UNUSED(dev);
 
@@ -106,7 +104,7 @@ static void prepare_thread_to_run(struct k_thread *thread, void *data)
 	z_ready_thread(thread);
 }
 
-static inline void handle_poll_events(struct k_queue *queue, u32_t state)
+static inline void handle_poll_events(struct k_queue *queue, uint32_t state)
 {
 #ifdef CONFIG_POLL
 	z_handle_obj_poll_events(&queue->poll_events, state);
@@ -137,7 +135,7 @@ static inline void z_vrfy_k_queue_cancel_wait(struct k_queue *queue)
 #include <syscalls/k_queue_cancel_wait_mrsh.c>
 #endif
 
-static s32_t queue_insert(struct k_queue *queue, void *prev, void *data,
+static int32_t queue_insert(struct k_queue *queue, void *prev, void *data,
 			  bool alloc)
 {
 	k_spinlock_key_t key = k_spin_lock(&queue->lock);
@@ -189,14 +187,14 @@ void k_queue_prepend(struct k_queue *queue, void *data)
 	(void)queue_insert(queue, NULL, data, false);
 }
 
-s32_t z_impl_k_queue_alloc_append(struct k_queue *queue, void *data)
+int32_t z_impl_k_queue_alloc_append(struct k_queue *queue, void *data)
 {
 	return queue_insert(queue, sys_sflist_peek_tail(&queue->data_q), data,
 			    true);
 }
 
 #ifdef CONFIG_USERSPACE
-static inline s32_t z_vrfy_k_queue_alloc_append(struct k_queue *queue,
+static inline int32_t z_vrfy_k_queue_alloc_append(struct k_queue *queue,
 						void *data)
 {
 	Z_OOPS(Z_SYSCALL_OBJ(queue, K_OBJ_QUEUE));
@@ -205,13 +203,13 @@ static inline s32_t z_vrfy_k_queue_alloc_append(struct k_queue *queue,
 #include <syscalls/k_queue_alloc_append_mrsh.c>
 #endif
 
-s32_t z_impl_k_queue_alloc_prepend(struct k_queue *queue, void *data)
+int32_t z_impl_k_queue_alloc_prepend(struct k_queue *queue, void *data)
 {
 	return queue_insert(queue, NULL, data, true);
 }
 
 #ifdef CONFIG_USERSPACE
-static inline s32_t z_vrfy_k_queue_alloc_prepend(struct k_queue *queue,
+static inline int32_t z_vrfy_k_queue_alloc_prepend(struct k_queue *queue,
 						 void *data)
 {
 	Z_OOPS(Z_SYSCALL_OBJ(queue, K_OBJ_QUEUE));
