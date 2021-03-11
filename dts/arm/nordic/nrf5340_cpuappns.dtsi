@@ -7,8 +7,7 @@
 /* .dtsi header for nRF5340 CPUAPP (Application MCU), Non-Secure domain */
 
 #include <arm/armv8-m.dtsi>
-#include <dt-bindings/i2c/i2c.h>
-#include <dt-bindings/gpio/gpio.h>
+#include "nrf_common.dtsi"
 
 / {
 	cpus {
@@ -31,10 +30,23 @@
 
 	chosen {
 		zephyr,flash-controller = &flash_controller;
+
+		/*
+		 * By default, system entropy comes from the entropy_cc310.c
+		 * driver in the nrf repository. This is devicetree glue
+		 * needed to make the system aware of that fact. Individual
+		 * applications can override this by changing this property
+		 * value.
+		 */
+		zephyr,entropy = &cryptocell_sw;
 	};
 
 	soc {
 		sram0: memory@20000000 {
+			compatible = "mmio-sram";
+		};
+
+		sram1: memory@21000000 {
 			compatible = "mmio-sram";
 		};
 
@@ -57,13 +69,17 @@
 			status = "disabled";
 			label = "GPIOTE_1";
 		};
+
+		/* For cryptocell access via platform library; see above */
+		cryptocell_sw: cryptocell-sw {
+			compatible = "nordic,nrf-cc312-sw";
+			#address-cells = <0>;
+			label = "CRYPTOCELL_SW";
+		};
+
 	};
 };
 
 &nvic {
 	arm,num-irq-priority-bits = <3>;
-};
-
-&systick {
-	status = "disabled";
 };

@@ -7,6 +7,7 @@
 
 /*
  * Copyright (c) 2017-2018 Linaro Limited
+ * Copyright (c) 2021 Nordic Semiconductor
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -56,6 +57,8 @@ struct zsock_pollfd {
 #define ZSOCK_MSG_PEEK 0x02
 /** zsock_recv: Control received data truncation */
 #define ZSOCK_MSG_TRUNC 0x10
+/** zsock_recv: Request a blocking operation until the request is satisfied. */
+#define ZSOCK_MSG_WAITALL 0x20
 /** zsock_recv/zsock_send: Override operation to non-blocking */
 #define ZSOCK_MSG_DONTWAIT 0x40
 
@@ -121,11 +124,19 @@ struct zsock_pollfd {
  *    - 1 - server
  */
 #define TLS_DTLS_ROLE 6
+
+/** Socket option for setting the supported Application Layer Protocols.
+ *  It accepts and returns a const char array of NULL terminated strings
+ *  representing the supported application layer protocols listed during
+ *  the TLS handshake.
+ */
+#define TLS_ALPN_LIST 7
+
 /** Socket option to control TLS session caching. Accepted values:
  *  - 0 - Disabled.
  *  - 1 - Enabled.
  */
-#define TLS_SESSION_CACHE 7
+#define TLS_SESSION_CACHE 8
 
 /** @} */
 
@@ -776,6 +787,7 @@ static inline char *inet_ntop(sa_family_t family, const void *src, char *dst,
 
 #define MSG_PEEK ZSOCK_MSG_PEEK
 #define MSG_TRUNC ZSOCK_MSG_TRUNC
+#define MSG_WAITALL ZSOCK_MSG_WAITALL
 #define MSG_DONTWAIT ZSOCK_MSG_DONTWAIT
 
 #define SHUT_RD ZSOCK_SHUT_RD
@@ -800,7 +812,6 @@ static inline char *inet_ntop(sa_family_t family, const void *src, char *dst,
 #define SO_REUSEADDR 2
 /** sockopt: Async error (ignored, for compatibility) */
 #define SO_ERROR 4
-#define SO_RCVTIMEO 20
 #define SO_SNDTIMEO 21
 #define SO_BINDTODEVICE 25
 /** sockopt: disable all replies to unexpected traffics */
@@ -809,6 +820,12 @@ static inline char *inet_ntop(sa_family_t family, const void *src, char *dst,
 #define SO_IP_ECHO_REPLY 31
 /** sockopt: disable IPv6 ICMP replies */
 #define SO_IPV6_ECHO_REPLY 32
+
+/**
+ * sockopt: Receive timeout
+ * Applies to receive functions like recv(), but not to connect()
+ */
+#define SO_RCVTIMEO 20
 
 /** sockopt: Timestamp TX packets */
 #define SO_TIMESTAMPING 37
@@ -836,7 +853,7 @@ static inline char *inet_ntop(sa_family_t family, const void *src, char *dst,
 #define IFNAMSIZ 64
 
 struct ifreq {
-    char ifr_name[IFNAMSIZ]; /* Interface name */
+	char ifr_name[IFNAMSIZ]; /* Interface name */
 };
 
 /* Protocol level for PDN. */

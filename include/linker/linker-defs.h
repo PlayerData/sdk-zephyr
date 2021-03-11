@@ -230,6 +230,13 @@ extern char __ccm_noinit_end[];
 extern char __ccm_end[];
 #endif
 
+#if DT_NODE_HAS_STATUS(DT_CHOSEN(zephyr_itcm), okay)
+extern char __itcm_start[];
+extern char __itcm_end[];
+extern char __itcm_size[];
+extern char __itcm_rom_start[];
+#endif
+
 #if DT_NODE_HAS_STATUS(DT_CHOSEN(zephyr_dtcm), okay)
 extern char __dtcm_data_start[];
 extern char __dtcm_data_end[];
@@ -290,6 +297,18 @@ extern char z_priv_stacks_ram_end[];
 extern char z_user_stacks_start[];
 extern char z_user_stacks_end[];
 #endif /* CONFIG_USERSPACE */
+
+#ifdef CONFIG_THREAD_LOCAL_STORAGE
+extern char __tdata_start[];
+extern char __tdata_end[];
+extern char __tdata_size[];
+extern char __tbss_start[];
+extern char __tbss_end[];
+extern char __tbss_size[];
+extern char __tls_start[];
+extern char __tls_end[];
+extern char __tls_size[];
+#endif /* CONFIG_THREAD_LOCAL_STORAGE */
 
 #endif /* ! _ASMLANGUAGE */
 
