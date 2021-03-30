@@ -397,12 +397,12 @@ static const struct sensor_driver_api max17055_battery_driver_api = {
 		.i_chg_term = DT_INST_PROP_OR(index, i_chg_term, 100),			   \
 		.rsense_mohms = DT_INST_PROP(index, rsense_mohms),			   \
 		.v_empty = DT_INST_PROP_OR(index, v_empty, 3300),			   \
-	};										   \
-											   \
-	DEVICE_AND_API_INIT(max17055_##index, DT_INST_LABEL(index),			   \
-			    &max17055_gauge_init, &max17055_driver_##index,		   \
-			    &max17055_config_##index, POST_KERNEL,			   \
-			    CONFIG_SENSOR_INIT_PRIORITY,				   \
-			    &max17055_battery_driver_api)
+	};                                                                     \
+                                                                               \
+	DEVICE_DEFINE(max17055_##index, DT_INST_LABEL(index),                  \
+		      &max17055_gauge_init, device_pm_control_nop,             \
+		      &max17055_driver_##index, &max17055_config_##index,      \
+		      POST_KERNEL, CONFIG_SENSOR_INIT_PRIORITY,                \
+		      &max17055_battery_driver_api)
 
 DT_INST_FOREACH_STATUS_OKAY(MAX17055_INIT);
