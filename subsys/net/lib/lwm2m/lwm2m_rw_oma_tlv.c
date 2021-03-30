@@ -423,6 +423,10 @@ static size_t put_s16(struct lwm2m_output_context *out,
 	struct oma_tlv tlv;
 	int16_t net_value;
 
+	if (INT8_MIN <= value && value <= INT8_MAX) {
+		return put_s8(out, path, (int8_t)value);
+	}
+
 	fd = engine_get_out_user_data(out);
 	if (!fd) {
 		return 0;
@@ -437,12 +441,16 @@ static size_t put_s16(struct lwm2m_output_context *out,
 }
 
 static size_t put_s32(struct lwm2m_output_context *out,
-			struct lwm2m_obj_path *path, int32_t value)
+		      struct lwm2m_obj_path *path, int32_t value)
 {
 	struct tlv_out_formatter_data *fd;
 	size_t len;
 	struct oma_tlv tlv;
 	int32_t net_value;
+
+	if (INT16_MIN <= value && value <= INT16_MAX) {
+		return put_s16(out, path, (int16_t)value);
+	}
 
 	fd = engine_get_out_user_data(out);
 	if (!fd) {
@@ -454,16 +462,21 @@ static size_t put_s32(struct lwm2m_output_context *out,
 		  tlv_calc_id(fd->writer_flags, path), sizeof(net_value));
 
 	len = oma_tlv_put(&tlv, out, (uint8_t *)&net_value, false);
+
 	return len;
 }
 
 static size_t put_s64(struct lwm2m_output_context *out,
-			struct lwm2m_obj_path *path, int64_t value)
+		      struct lwm2m_obj_path *path, int64_t value)
 {
 	struct tlv_out_formatter_data *fd;
 	size_t len;
 	struct oma_tlv tlv;
 	int64_t net_value;
+
+	if (INT32_MIN <= value && value <= INT32_MAX) {
+		return put_s32(out, path, (int32_t)value);
+	}
 
 	fd = engine_get_out_user_data(out);
 	if (!fd) {
@@ -933,7 +946,8 @@ int do_write_op_tlv(struct lwm2m_message *msg)
 	 * message processing - consecutive blocks will not carry the TLV
 	 * header.
 	 */
-	if (msg->path.obj_id == 5 && msg->path.res_id == 0) {
+	if (msg->in.block_ctx != NULL && msg->in.block_ctx->ctx.current > 0 &&
+	    msg->path.obj_id == 5 && msg->path.res_id == 0) {
 		ret = do_write_op_tlv_item(msg);
 		if (ret < 0) {
 			return ret;
@@ -969,7 +983,7 @@ int do_write_op_tlv(struct lwm2m_message *msg)
 
 #ifdef CONFIG_LWM2M_RD_CLIENT_SUPPORT
 				if (!msg->ctx->bootstrap_mode) {
-					engine_trigger_update();
+					engine_trigger_update(true);
 				}
 #endif
 			}
