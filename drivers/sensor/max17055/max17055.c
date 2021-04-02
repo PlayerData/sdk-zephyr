@@ -72,7 +72,7 @@ static int current_to_ma(unsigned int rsense_mohms, int16_t val)
  */
 static int current_ma_to_max17055(unsigned int rsense_mohms, uint16_t val)
 {
-	return (val * rsense_mohms) / 1.5625;
+	return val * rsense_mohms / 1.5625;
 }
 
 /**
@@ -103,7 +103,7 @@ static int capacity_to_ma(unsigned int rsense_mohms, int16_t val)
  */
 static int capacity_to_max17055(unsigned int rsense_mohms, uint16_t val_mha)
 {
-	return (val_mha * rsense_mohms) / 5.0;
+	return val_mha * rsense_mohms / 5;
 }
 
 /**
@@ -114,7 +114,7 @@ static int capacity_to_max17055(unsigned int rsense_mohms, uint16_t val_mha)
  */
 static int voltage_mV_to_max17055(uint16_t val_mv)
 {
-	return (val_mv * 16) / 1.25;
+	return val_mv * 16 / 1.25;
 }
 
 static void set_millis(struct sensor_value *val, int val_millis)
@@ -364,8 +364,9 @@ static int max17055_gauge_init(const struct device *dev)
 
 	/* Wait for FSTAT_DNR to be cleared */
 	tmp = FSTAT_DNR;
-	while (tmp & FSTAT_DNR)
+	while (tmp & FSTAT_DNR) {
 		max17055_reg_read(priv, FSTAT, &tmp);
+	}
 
 	if (max17055_init_config(priv, config)) {
 		return -EIO;
@@ -390,19 +391,20 @@ static const struct sensor_driver_api max17055_battery_driver_api = {
 											   \
 	static const struct max17055_config max17055_config_##index = {			   \
 		.bus_name = DT_INST_BUS_LABEL(index),					   \
-		.design_capacity = DT_INST_PROP_OR(index, design_capacity, 1500),	   \
+		.design_capacity = DT_INST_PROP(index, design_capacity),		   \
 		.design_voltage = DT_INST_PROP(index, design_voltage),			   \
 		.desired_charging_current = DT_INST_PROP(index, desired_charging_current), \
 		.desired_voltage = DT_INST_PROP(index, desired_voltage),		   \
-		.i_chg_term = DT_INST_PROP_OR(index, i_chg_term, 100),			   \
+		.i_chg_term = DT_INST_PROP(index, i_chg_term),				   \
 		.rsense_mohms = DT_INST_PROP(index, rsense_mohms),			   \
-		.v_empty = DT_INST_PROP_OR(index, v_empty, 3300),			   \
-	};                                                                     \
-                                                                               \
-	DEVICE_DEFINE(max17055_##index, DT_INST_LABEL(index),                  \
-		      &max17055_gauge_init, device_pm_control_nop,             \
-		      &max17055_driver_##index, &max17055_config_##index,      \
-		      POST_KERNEL, CONFIG_SENSOR_INIT_PRIORITY,                \
-		      &max17055_battery_driver_api)
+		.v_empty = DT_INST_PROP(index, v_empty),				   \
+	};										   \
+											   \
+	DEVICE_DT_INST_DEFINE(index, &max17055_gauge_init,				   \
+			      device_pm_control_nop,					   \
+			      &max17055_driver_##index,					   \
+			      &max17055_config_##index, POST_KERNEL,			   \
+			      CONFIG_SENSOR_INIT_PRIORITY,				   \
+			      &max17055_battery_driver_api)
 
 DT_INST_FOREACH_STATUS_OKAY(MAX17055_INIT);
