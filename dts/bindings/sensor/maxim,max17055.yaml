@@ -13,7 +13,7 @@ include: i2c-device.yaml
 properties:
     design-capacity:
       type: int
-      required: false
+      required: true
       description: The design capacity (aka label capacity) of the cell in mAh
 
     design-voltage:
@@ -33,7 +33,7 @@ properties:
 
     i-chg-term:
       type: int
-      required: false
+      required: true
       description: The charge termination current in mA
 
     rsense-mohms:
@@ -44,5 +44,5 @@ properties:
 
     v-empty:
       type: int
-      required: false
+      required: true
       description: The empty voltage of the cell in mV
